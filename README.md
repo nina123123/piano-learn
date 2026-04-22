@@ -15,7 +15,9 @@ Visual piano learning in your browser. Upload a MusicXML sheet music file and wa
 
 ## Try it
 
-Open `index.html` in any modern browser — no build step, no server required.
+**🌐 Live demo: https://nina123123.github.io/piano-learn/**
+
+Or run locally: just open `index.html` in any modern browser — no build step, no server required.
 
 ## Where to find MusicXML files
 
