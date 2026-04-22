@@ -175,20 +175,37 @@
   </header>
 
   <div class="tip">
-    <strong>Need sheet music?</strong> Download free MusicXML files from
-    <a href="https://musescore.com" target="_blank">MuseScore.com</a>,
-    <a href="https://imslp.org" target="_blank">IMSLP</a>, or export from the free
-    <a href="https://musescore.org" target="_blank">MuseScore app</a>. Accepted formats: <code>.xml</code>, <code>.musicxml</code>, <code>.mxl</code>.
+    <strong>📚 Add your own songs:</strong> search MuseScore for sheet music (try
+    <a href="https://musescore.com/sheetmusic?text=yoru%20ni%20kakeru" target="_blank">Yoru ni Kakeru</a>,
+    <a href="https://musescore.com/sheetmusic?text=idol%20yoasobi" target="_blank">Idol (Yoasobi)</a>,
+    <a href="https://musescore.com/sheetmusic?text=always%20with%20me%20spirited%20away" target="_blank">Always With Me</a>,
+    <a href="https://musescore.com/sheetmusic?text=bolbbalgan4" target="_blank">BOL4</a>,
+    <a href="https://imslp.org" target="_blank">IMSLP</a>),
+    download as <code>.musicxml</code>, upload below, then click <strong>⭐ Save</strong> to keep it in your library (stored privately in your browser).
   </div>
 
   <div class="controls">
     <div class="control">
-      <label>Sheet music file</label>
-      <input type="file" accept=".xml,.musicxml,.mxl" id="file-input">
+      <label>Song library</label>
+      <div style="display:flex; gap:4px; align-items:center;">
+        <select id="library-select" style="min-width:190px;">
+          <option value="">— pick a song —</option>
+          <optgroup label="Built-in examples" id="builtin-optgroup">
+            <option value="builtin:twinkle">Twinkle Twinkle Little Star</option>
+            <option value="builtin:happy-birthday">Happy Birthday to You</option>
+            <option value="builtin:ode-to-joy">Ode to Joy (Beethoven)</option>
+          </optgroup>
+          <optgroup label="My saved songs" id="saved-optgroup"></optgroup>
+        </select>
+        <button id="delete-btn" class="ghost" style="display:none; padding:6px 8px;" title="Remove from library">🗑</button>
+      </div>
     </div>
     <div class="control">
-      <label>&nbsp;</label>
-      <button id="example-btn" class="ghost">🎵 Load example (Twinkle)</button>
+      <label>Upload new file</label>
+      <div style="display:flex; gap:4px;">
+        <input type="file" accept=".xml,.musicxml,.mxl" id="file-input">
+        <button id="save-btn" class="ghost" disabled title="Save current song to your library">⭐ Save</button>
+      </div>
     </div>
     <div class="control">
       <label>Playback</label>
@@ -226,7 +243,7 @@
 
   <div class="stage">
     <div id="sheet-music">
-      <div class="empty-state">📄 Load a sheet music file (MusicXML) above, or try the example.</div>
+      <div class="empty-state">📄 Pick a song from the library above, or upload a MusicXML file.</div>
     </div>
     <div id="stage-bottom">
       <canvas id="notes"></canvas>
@@ -560,14 +577,18 @@ async function loadFile(file) {
     setStatus("Parsing sheet music…");
     const xml = await readMusicXML(file);
     await loadXML(xml, file.name);
+    const cleanName = file.name.replace(/\.(xml|musicxml|mxl)$/i, "");
+    currentSongSource = { type: "file", name: cleanName, xml };
+    document.getElementById("library-select").value = "";
+    updateSaveDeleteButtons();
   } catch (err) {
     setStatus("Error: " + err.message);
     console.error(err);
   }
 }
 
-// ---------- Twinkle Twinkle example as MusicXML ----------
-function buildExampleXML() {
+// ---------- Built-in public-domain examples as MusicXML ----------
+function buildTwinkleXML() {
   const DIV = 2;
   const DUR = { whole: 8, half: 4, quarter: 2, eighth: 1 };
   const noteTag = (pitch, type, voice, staff) => {
@@ -619,6 +640,134 @@ function buildExampleXML() {
   <part-list><score-part id="P1"><part-name>Piano</part-name></score-part></part-list>
   <part id="P1">${body}</part>
 </score-partwise>`;
+}
+
+function buildHappyBirthdayXML() {
+  // Public domain in the US since 2016. Simple melody in C major, 3/4 time.
+  // Durations at DIV=2: 8th=1, quarter=2, dotted-quarter=3, half=4, dotted-half=6
+  const note = (pitch, type, dur, dotted = false) => {
+    const step = pitch[0], oct = pitch.slice(1);
+    return `<note><pitch><step>${step}</step><octave>${oct}</octave></pitch><duration>${dur}</duration><type>${type}</type>${dotted ? "<dot/>" : ""}</note>`;
+  };
+  const e = (p) => note(p, "eighth", 1);
+  const q = (p) => note(p, "quarter", 2);
+  const dq = (p) => note(p, "quarter", 3, true);
+  const h = (p) => note(p, "half", 4);
+  const dh = (p) => note(p, "half", 6, true);
+
+  const attrs = `<attributes>
+    <divisions>2</divisions>
+    <key><fifths>0</fifths></key>
+    <time><beats>3</beats><beat-type>4</beat-type></time>
+    <clef><sign>G</sign><line>2</line></clef>
+  </attributes>
+  <direction placement="above"><direction-type><metronome><beat-unit>quarter</beat-unit><per-minute>110</per-minute></metronome></direction-type><sound tempo="110"/></direction>`;
+
+  const m0 = `<measure number="0" implicit="yes">${attrs}${e("G4")}${e("G4")}</measure>`;
+  const m1 = `<measure number="1">${dq("A4")}${e("G4")}${q("C5")}</measure>`;
+  const m2 = `<measure number="2">${h("B4")}${e("G4")}${e("G4")}</measure>`;
+  const m3 = `<measure number="3">${dq("A4")}${e("G4")}${q("D5")}</measure>`;
+  const m4 = `<measure number="4">${h("C5")}${e("G4")}${e("G4")}</measure>`;
+  const m5 = `<measure number="5">${dq("G5")}${e("E5")}${q("C5")}</measure>`;
+  const m6 = `<measure number="6">${h("B4")}${e("F5")}${e("F5")}</measure>`;
+  const m7 = `<measure number="7">${dq("E5")}${e("C5")}${q("D5")}</measure>`;
+  const m8 = `<measure number="8">${dh("C5")}</measure>`;
+
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE score-partwise PUBLIC "-//Recordare//DTD MusicXML 3.0 Partwise//EN" "http://www.musicxml.org/dtds/partwise.dtd">
+<score-partwise version="3.0">
+  <work><work-title>Happy Birthday to You</work-title></work>
+  <part-list><score-part id="P1"><part-name>Piano</part-name></score-part></part-list>
+  <part id="P1">${m0}${m1}${m2}${m3}${m4}${m5}${m6}${m7}${m8}</part>
+</score-partwise>`;
+}
+
+function buildOdeToJoyXML() {
+  // Beethoven's 9th, public domain. Simplified melody in C major, 4/4.
+  // DIV=2: 8th=1, quarter=2, dotted-quarter=3, half=4
+  const note = (pitch, type, dur, dotted = false) => {
+    const step = pitch[0], oct = pitch.slice(1);
+    return `<note><pitch><step>${step}</step><octave>${oct}</octave></pitch><duration>${dur}</duration><type>${type}</type>${dotted ? "<dot/>" : ""}</note>`;
+  };
+  const q = (p) => note(p, "quarter", 2);
+  const e = (p) => note(p, "eighth", 1);
+  const dq = (p) => note(p, "quarter", 3, true);
+  const h = (p) => note(p, "half", 4);
+
+  const attrs = `<attributes>
+    <divisions>2</divisions>
+    <key><fifths>0</fifths></key>
+    <time><beats>4</beats><beat-type>4</beat-type></time>
+    <clef><sign>G</sign><line>2</line></clef>
+  </attributes>
+  <direction placement="above"><direction-type><metronome><beat-unit>quarter</beat-unit><per-minute>100</per-minute></metronome></direction-type><sound tempo="100"/></direction>`;
+
+  // Phrase A: E E F G | G F E D | C C D E | E. D (eighth) D (half)
+  const m1 = `<measure number="1">${attrs}${q("E4")}${q("E4")}${q("F4")}${q("G4")}</measure>`;
+  const m2 = `<measure number="2">${q("G4")}${q("F4")}${q("E4")}${q("D4")}</measure>`;
+  const m3 = `<measure number="3">${q("C4")}${q("C4")}${q("D4")}${q("E4")}</measure>`;
+  const m4 = `<measure number="4">${dq("E4")}${e("D4")}${h("D4")}</measure>`;
+  // Phrase B: E E F G | G F E D | C C D E | D. C (eighth) C (half)
+  const m5 = `<measure number="5">${q("E4")}${q("E4")}${q("F4")}${q("G4")}</measure>`;
+  const m6 = `<measure number="6">${q("G4")}${q("F4")}${q("E4")}${q("D4")}</measure>`;
+  const m7 = `<measure number="7">${q("C4")}${q("C4")}${q("D4")}${q("E4")}</measure>`;
+  const m8 = `<measure number="8">${dq("D4")}${e("C4")}${h("C4")}</measure>`;
+
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE score-partwise PUBLIC "-//Recordare//DTD MusicXML 3.0 Partwise//EN" "http://www.musicxml.org/dtds/partwise.dtd">
+<score-partwise version="3.0">
+  <work><work-title>Ode to Joy</work-title><work-number>from Beethoven's 9th Symphony</work-number></work>
+  <part-list><score-part id="P1"><part-name>Piano</part-name></score-part></part-list>
+  <part id="P1">${m1}${m2}${m3}${m4}${m5}${m6}${m7}${m8}</part>
+</score-partwise>`;
+}
+
+const BUILTIN_SONGS = {
+  "twinkle":        { name: "Twinkle Twinkle Little Star", build: buildTwinkleXML },
+  "happy-birthday": { name: "Happy Birthday to You",       build: buildHappyBirthdayXML },
+  "ode-to-joy":     { name: "Ode to Joy (Beethoven)",      build: buildOdeToJoyXML },
+};
+
+// ---------- Saved song library (localStorage) ----------
+const SONGS_KEY = "piano-learn-songs-v1";
+let currentSongSource = null; // { type: 'builtin'|'saved'|'file', id?, name, xml }
+
+function getSavedSongs() {
+  try { return JSON.parse(localStorage.getItem(SONGS_KEY) || "[]"); }
+  catch { return []; }
+}
+function setSavedSongs(songs) {
+  localStorage.setItem(SONGS_KEY, JSON.stringify(songs));
+}
+function populateLibrary() {
+  const group = document.getElementById("saved-optgroup");
+  group.innerHTML = "";
+  const songs = getSavedSongs();
+  if (songs.length === 0) {
+    group.label = "My saved songs (empty)";
+  } else {
+    group.label = `My saved songs (${songs.length})`;
+    for (const s of songs) {
+      const opt = document.createElement("option");
+      opt.value = "saved:" + s.id;
+      opt.textContent = s.name;
+      group.appendChild(opt);
+    }
+  }
+}
+function updateSaveDeleteButtons() {
+  const saveBtn = document.getElementById("save-btn");
+  const deleteBtn = document.getElementById("delete-btn");
+  if (!currentSongSource || currentSongSource.type === "builtin") {
+    saveBtn.disabled = true;
+    deleteBtn.style.display = "none";
+  } else if (currentSongSource.type === "saved") {
+    saveBtn.disabled = true;
+    deleteBtn.style.display = "";
+  } else { // file
+    saveBtn.disabled = false;
+    deleteBtn.style.display = "none";
+  }
 }
 
 // ---------- Playback ----------
@@ -757,14 +906,66 @@ document.getElementById("file-input").addEventListener("change", async (e) => {
   if (f) await loadFile(f);
 });
 
-document.getElementById("example-btn").addEventListener("click", async () => {
+document.getElementById("library-select").addEventListener("change", async (e) => {
+  const v = e.target.value;
+  if (!v) {
+    currentSongSource = null;
+    updateSaveDeleteButtons();
+    return;
+  }
   try {
-    setStatus("Loading Twinkle Twinkle…");
-    await loadXML(buildExampleXML(), "Twinkle Twinkle Little Star");
+    const [kind, id] = v.split(":");
+    if (kind === "builtin") {
+      const song = BUILTIN_SONGS[id];
+      if (!song) return;
+      setStatus(`Loading ${song.name}…`);
+      const xml = song.build();
+      await loadXML(xml, song.name);
+      currentSongSource = { type: "builtin", id, name: song.name, xml };
+    } else if (kind === "saved") {
+      const song = getSavedSongs().find(s => s.id === id);
+      if (!song) { setStatus("Saved song not found."); return; }
+      setStatus(`Loading ${song.name}…`);
+      await loadXML(song.xml, song.name);
+      currentSongSource = { type: "saved", id, name: song.name, xml: song.xml };
+    }
+    updateSaveDeleteButtons();
   } catch (err) {
     setStatus("Error: " + err.message);
     console.error(err);
   }
+});
+
+document.getElementById("save-btn").addEventListener("click", () => {
+  if (!currentSongSource || currentSongSource.type === "saved" || currentSongSource.type === "builtin") return;
+  const name = prompt("Save this song as:", currentSongSource.name);
+  if (!name || !name.trim()) return;
+  const songs = getSavedSongs();
+  const id = "u" + Date.now();
+  songs.push({ id, name: name.trim(), xml: currentSongSource.xml });
+  try {
+    setSavedSongs(songs);
+  } catch (err) {
+    alert("Could not save — browser storage is full. Remove an older song first.");
+    return;
+  }
+  currentSongSource = { type: "saved", id, name: name.trim(), xml: currentSongSource.xml };
+  populateLibrary();
+  document.getElementById("library-select").value = "saved:" + id;
+  updateSaveDeleteButtons();
+  setStatus(`⭐ Saved "${name.trim()}" to your library.`);
+});
+
+document.getElementById("delete-btn").addEventListener("click", () => {
+  if (!currentSongSource || currentSongSource.type !== "saved") return;
+  if (!confirm(`Remove "${currentSongSource.name}" from your library?`)) return;
+  const songs = getSavedSongs().filter(s => s.id !== currentSongSource.id);
+  setSavedSongs(songs);
+  currentSongSource = null;
+  populateLibrary();
+  document.getElementById("library-select").value = "";
+  updateSaveDeleteButtons();
+  setStatus("Removed from library.");
 });
 
 playBtn.addEventListener("click", () => { isPlaying ? pausePlayback() : startPlayback(); });
@@ -804,11 +1005,13 @@ document.addEventListener("keydown", (e) => {
 // ---------- Init ----------
 buildKeys(whiteW);
 renderKeyboard();
+populateLibrary();
+updateSaveDeleteButtons();
 requestAnimationFrame(draw);
 
 // Warm up verovio in background
 window.verovioReady
-  .then((tk) => { toolkit = tk; setStatus("Ready. Load a MusicXML file or try the example."); })
+  .then((tk) => { toolkit = tk; setStatus("Ready. Pick a song from the library or upload a MusicXML file."); })
   .catch((err) => { setStatus("Music engine failed to load: " + err.message); });
 </script>
 </body>
