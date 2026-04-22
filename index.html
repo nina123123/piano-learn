@@ -1,0 +1,815 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Piano Learn · Learn piano with falling notes</title>
+<meta name="description" content="Learn piano in your browser. Upload MusicXML sheet music and watch notes fall onto a keyboard labeled with do re mi. Practice one hand, slow the tempo, and see the real score alongside.">
+<meta name="theme-color" content="#0f172a">
+<meta property="og:title" content="Piano Learn">
+<meta property="og:description" content="Upload sheet music (MusicXML) and learn piano with falling notes — one hand at a time, at your own tempo.">
+<meta property="og:type" content="website">
+<meta name="twitter:card" content="summary">
+<link rel="icon" type="image/svg+xml" href='data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><text y="82" font-size="84">🎹</text></svg>'>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", sans-serif;
+    background: #0f172a;
+    color: #e2e8f0;
+    min-height: 100vh;
+    padding: 16px;
+  }
+  header { text-align: center; margin-bottom: 14px; }
+  h1 { font-size: 22px; margin-bottom: 4px; }
+  #status { font-size: 13px; color: #94a3b8; min-height: 1.2em; }
+
+  .controls {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px 20px;
+    justify-content: center;
+    align-items: flex-end;
+    margin: 0 auto 14px;
+    padding: 14px 18px;
+    background: #1e293b;
+    border-radius: 10px;
+    max-width: 1400px;
+  }
+  .control { display: flex; flex-direction: column; gap: 4px; }
+  .control label { font-size: 11px; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.5px; }
+  .control input[type="range"] { width: 140px; }
+
+  button {
+    background: #3b82f6; color: white; border: none;
+    padding: 6px 14px; border-radius: 6px; cursor: pointer; font-size: 13px;
+  }
+  button:hover:not(:disabled) { background: #2563eb; }
+  button:disabled { background: #475569; cursor: not-allowed; opacity: 0.6; }
+  button.ghost { background: #334155; }
+  button.ghost:hover:not(:disabled) { background: #475569; }
+
+  select, input[type="file"] {
+    background: #334155; color: #e2e8f0;
+    border: 1px solid #475569; padding: 5px 8px;
+    border-radius: 6px; font-size: 13px;
+  }
+  input[type="file"] { max-width: 220px; }
+
+  .stage {
+    max-width: 1400px; margin: 0 auto;
+    border-radius: 10px; overflow: hidden;
+    box-shadow: 0 10px 40px rgba(0,0,0,0.4);
+  }
+
+  #sheet-music {
+    background: #fafafa;
+    color: #000;
+    padding: 16px;
+    max-height: 360px;
+    overflow-y: auto;
+    border-bottom: 2px solid #1e293b;
+    position: relative;
+  }
+  #sheet-music .empty-state {
+    text-align: center;
+    color: #64748b;
+    padding: 40px 20px;
+    font-size: 14px;
+  }
+  #sheet-music svg {
+    display: block;
+    width: 100% !important;
+    height: auto !important;
+    max-width: 100%;
+  }
+  #sheet-music .note.playing,
+  #sheet-music g.note.playing * {
+    fill: #d97706 !important;
+    stroke: #d97706 !important;
+  }
+
+  #stage-bottom {
+    position: relative;
+    background: #020617;
+    overflow-x: auto;
+    overflow-y: hidden;
+  }
+  #notes { display: block; }
+  #keyboard { position: relative; background: #000; }
+
+  .key {
+    position: absolute; bottom: 0;
+    display: flex; justify-content: center; align-items: flex-end;
+    padding-bottom: 6px; font-size: 10px;
+    user-select: none; cursor: pointer;
+    transition: background-color 0.05s;
+  }
+  .key.white {
+    background: linear-gradient(to bottom, #ffffff 0%, #f1f5f9 100%);
+    color: #64748b;
+    border: 1px solid #cbd5e1;
+    border-radius: 0 0 4px 4px;
+    z-index: 1;
+  }
+  .key.black {
+    background: linear-gradient(to bottom, #1e293b 0%, #0f172a 100%);
+    color: #94a3b8;
+    border-radius: 0 0 3px 3px;
+    z-index: 2;
+    box-shadow: inset 0 -4px 0 #000;
+  }
+  .key.white.active-right { background: #fecaca; border-color: #fca5a5; }
+  .key.white.active-left  { background: #bfdbfe; border-color: #93c5fd; }
+  .key.black.active-right { background: #dc2626; }
+  .key.black.active-left  { background: #2563eb; }
+  .key .label { font-weight: 500; pointer-events: none; }
+  .key.black .label { color: #f1f5f9; font-size: 9px; }
+  .middle-c { box-shadow: inset 0 -6px 0 #fbbf24 !important; }
+
+  #hint {
+    text-align: center;
+    margin-top: 14px;
+    font-size: 12px;
+    color: #64748b;
+  }
+  .legend { display: inline-flex; gap: 14px; align-items: center; flex-wrap: wrap; justify-content: center; }
+  .swatch { display: inline-block; width: 10px; height: 10px; border-radius: 2px; vertical-align: middle; margin-right: 4px; }
+
+  a { color: #60a5fa; }
+
+  .tip {
+    max-width: 1400px; margin: 0 auto 14px;
+    padding: 10px 16px;
+    background: rgba(59, 130, 246, 0.1);
+    border-left: 3px solid #3b82f6;
+    border-radius: 6px;
+    font-size: 13px;
+    color: #cbd5e1;
+  }
+
+  @media (max-width: 768px) {
+    body { padding: 8px; }
+    h1 { font-size: 18px; }
+    #status { font-size: 12px; }
+    .tip { font-size: 12px; padding: 8px 12px; }
+    .controls { padding: 10px; gap: 8px 12px; }
+    .control input[type="range"] { width: 110px; }
+    #sheet-music { max-height: 220px; padding: 8px; }
+    #sheet-music .empty-state { padding: 20px 10px; font-size: 13px; }
+  }
+
+  @media (max-width: 480px) {
+    .control input[type="range"] { width: 100%; min-width: 90px; }
+    .control input[type="file"] { max-width: 180px; font-size: 12px; }
+    #sheet-music { max-height: 180px; }
+    #hint { font-size: 11px; }
+    .legend { gap: 10px; }
+  }
+</style>
+</head>
+<body>
+  <header>
+    <h1>🎹 Piano Learn</h1>
+    <p id="status">Loading music engine…</p>
+  </header>
+
+  <div class="tip">
+    <strong>Need sheet music?</strong> Download free MusicXML files from
+    <a href="https://musescore.com" target="_blank">MuseScore.com</a>,
+    <a href="https://imslp.org" target="_blank">IMSLP</a>, or export from the free
+    <a href="https://musescore.org" target="_blank">MuseScore app</a>. Accepted formats: <code>.xml</code>, <code>.musicxml</code>, <code>.mxl</code>.
+  </div>
+
+  <div class="controls">
+    <div class="control">
+      <label>Sheet music file</label>
+      <input type="file" accept=".xml,.musicxml,.mxl" id="file-input">
+    </div>
+    <div class="control">
+      <label>&nbsp;</label>
+      <button id="example-btn" class="ghost">🎵 Load example (Twinkle)</button>
+    </div>
+    <div class="control">
+      <label>Playback</label>
+      <div style="display:flex; gap:6px;">
+        <button id="play-btn" disabled>▶ Play</button>
+        <button id="restart-btn" disabled class="ghost">⏮</button>
+      </div>
+    </div>
+    <div class="control">
+      <label>Speed: <span id="speed-val">100%</span></label>
+      <input type="range" id="speed" min="20" max="150" value="100" step="5">
+    </div>
+    <div class="control">
+      <label>Key size: <span id="size-val">26px</span></label>
+      <input type="range" id="size" min="14" max="50" value="26">
+    </div>
+    <div class="control">
+      <label>Hands</label>
+      <select id="hand">
+        <option value="both">Both hands</option>
+        <option value="right">Right only</option>
+        <option value="left">Left only</option>
+      </select>
+    </div>
+    <div class="control">
+      <label>Note labels</label>
+      <select id="labels">
+        <option value="solfege">do re mi</option>
+        <option value="jianpu">1 2 3 (简谱)</option>
+        <option value="letters">C D E</option>
+        <option value="none">None</option>
+      </select>
+    </div>
+  </div>
+
+  <div class="stage">
+    <div id="sheet-music">
+      <div class="empty-state">📄 Load a sheet music file (MusicXML) above, or try the example.</div>
+    </div>
+    <div id="stage-bottom">
+      <canvas id="notes"></canvas>
+      <div id="keyboard"></div>
+    </div>
+  </div>
+
+  <p id="hint">
+    <span class="legend">
+      <span><span class="swatch" style="background:#ef4444"></span>Right hand</span>
+      <span><span class="swatch" style="background:#3b82f6"></span>Left hand</span>
+      <span><span class="swatch" style="background:#d97706"></span>Now playing</span>
+      <span><span class="swatch" style="background:#fbbf24"></span>Middle C</span>
+    </span>
+    &nbsp;·&nbsp; Space = play/pause · Click any key to play it.
+  </p>
+
+<!-- Verovio for MusicXML rendering + MIDI export -->
+<script src="https://www.verovio.org/javascript/latest/verovio-toolkit-wasm.js"></script>
+<script>
+window.verovioReady = new Promise((resolve, reject) => {
+  let resolved = false;
+  const tryResolve = () => {
+    if (resolved) return;
+    try {
+      const tk = new verovio.toolkit();
+      tk.getVersion();
+      resolved = true;
+      resolve(tk);
+    } catch (e) { /* not ready */ }
+  };
+  if (window.verovio && verovio.module) {
+    verovio.module.onRuntimeInitialized = tryResolve;
+  }
+  const interval = setInterval(() => {
+    tryResolve();
+    if (resolved) clearInterval(interval);
+  }, 200);
+  setTimeout(() => { if (!resolved) reject(new Error("Verovio failed to load")); }, 15000);
+});
+</script>
+
+<!-- JSZip for .mxl (compressed MusicXML) support -->
+<script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
+
+<script type="module">
+import * as Tone from "https://esm.sh/tone@14.8.49";
+import { Midi } from "https://esm.sh/@tonejs/midi@2.0.28";
+
+// ---------- Config ----------
+const MIDI_MIN = 21, MIDI_MAX = 108;
+const BLACK_PCS = new Set([1, 3, 6, 8, 10]);
+const KEY_HEIGHT = 150;
+const BLACK_H_RATIO = 0.62;
+const BLACK_W_RATIO = 0.58;
+const CANVAS_H = 320;
+const LOOKAHEAD_S = 3;
+
+const SOLFEGE = { 0:"do", 2:"re", 4:"mi", 5:"fa", 7:"sol", 9:"la", 11:"si" };
+const JIANPU  = { 0:"1",  2:"2",  4:"3",  5:"4",  7:"5",   9:"6",  11:"7" };
+const LETTERS = { 0:"C",  2:"D",  4:"E",  5:"F",  7:"G",   9:"A",  11:"B" };
+const BLACK_SOLFEGE = { 1:"do♯", 3:"re♯", 6:"fa♯", 8:"sol♯", 10:"la♯" };
+const BLACK_JIANPU  = { 1:"1♯", 3:"2♯", 6:"4♯", 8:"5♯", 10:"6♯" };
+const BLACK_LETTERS = { 1:"C♯", 3:"D♯", 6:"F♯", 8:"G♯", 10:"A♯" };
+
+// ---------- State ----------
+let whiteW = 26;
+let speed = 1.0;
+let handFilter = "both";
+let labelMode = "solfege";
+
+let notes = [];
+let keys = [];
+let keysByMidi = {};
+let keyElements = {};
+let totalWidth = 0;
+let duration = 0;
+
+let isPlaying = false;
+let part = null;
+let sampler = null;
+let samplerReady = false;
+let audioStarting = false;
+
+let toolkit = null;
+let timemap = [];
+let tmIdx = 0;
+let activeSheetIds = new Set();
+let lastScrolledId = null;
+
+// ---------- DOM ----------
+const keyboardEl = document.getElementById("keyboard");
+const canvas = document.getElementById("notes");
+const ctx = canvas.getContext("2d");
+const statusEl = document.getElementById("status");
+const playBtn = document.getElementById("play-btn");
+const restartBtn = document.getElementById("restart-btn");
+const sheetEl = document.getElementById("sheet-music");
+
+function setStatus(s) { statusEl.textContent = s; }
+
+// ---------- Keyboard layout ----------
+function buildKeys(w) {
+  keys = []; keysByMidi = {};
+  let wIdx = 0;
+  for (let midi = MIDI_MIN; midi <= MIDI_MAX; midi++) {
+    const pc = midi % 12;
+    const isBlack = BLACK_PCS.has(pc);
+    let k;
+    if (isBlack) {
+      const bw = w * BLACK_W_RATIO;
+      k = { midi, pc, isBlack: true, x: wIdx * w - bw / 2, width: bw };
+    } else {
+      k = { midi, pc, isBlack: false, x: wIdx * w, width: w };
+      wIdx++;
+    }
+    keys.push(k); keysByMidi[midi] = k;
+  }
+  totalWidth = wIdx * w;
+}
+
+function labelFor(pc, mode) {
+  if (mode === "none") return "";
+  const isBlack = BLACK_PCS.has(pc);
+  if (mode === "solfege") return isBlack ? BLACK_SOLFEGE[pc] : SOLFEGE[pc];
+  if (mode === "jianpu")  return isBlack ? BLACK_JIANPU[pc]  : JIANPU[pc];
+  if (mode === "letters") return isBlack ? BLACK_LETTERS[pc] : LETTERS[pc];
+  return "";
+}
+
+function renderKeyboard() {
+  keyboardEl.innerHTML = "";
+  keyElements = {};
+  keyboardEl.style.width = totalWidth + "px";
+  keyboardEl.style.height = KEY_HEIGHT + "px";
+
+  for (const k of keys) {
+    if (k.isBlack) continue;
+    const el = document.createElement("div");
+    el.className = "key white";
+    if (k.midi === 60) el.classList.add("middle-c");
+    el.style.left = k.x + "px";
+    el.style.width = k.width + "px";
+    el.style.height = KEY_HEIGHT + "px";
+    el.dataset.midi = k.midi;
+    const lbl = document.createElement("span");
+    lbl.className = "label";
+    lbl.textContent = labelFor(k.pc, labelMode);
+    el.appendChild(lbl);
+    el.addEventListener("mousedown", (e) => { e.preventDefault(); playKey(k.midi); });
+    keyboardEl.appendChild(el);
+    keyElements[k.midi] = el;
+  }
+  for (const k of keys) {
+    if (!k.isBlack) continue;
+    const el = document.createElement("div");
+    el.className = "key black";
+    el.style.left = k.x + "px";
+    el.style.width = k.width + "px";
+    el.style.height = (KEY_HEIGHT * BLACK_H_RATIO) + "px";
+    el.dataset.midi = k.midi;
+    const lbl = document.createElement("span");
+    lbl.className = "label";
+    lbl.textContent = labelFor(k.pc, labelMode);
+    el.appendChild(lbl);
+    el.addEventListener("mousedown", (e) => { e.preventDefault(); playKey(k.midi); });
+    keyboardEl.appendChild(el);
+    keyElements[k.midi] = el;
+  }
+
+  canvas.width = totalWidth;
+  canvas.height = CANVAS_H;
+}
+
+// ---------- Audio ----------
+async function initAudio() {
+  if (sampler) return;
+  if (audioStarting) {
+    while (!samplerReady) await new Promise(r => setTimeout(r, 100));
+    return;
+  }
+  audioStarting = true;
+  await Tone.start();
+  sampler = new Tone.Sampler({
+    urls: {
+      A0: "A0.mp3",
+      C1: "C1.mp3", "D#1": "Ds1.mp3", "F#1": "Fs1.mp3", A1: "A1.mp3",
+      C2: "C2.mp3", "D#2": "Ds2.mp3", "F#2": "Fs2.mp3", A2: "A2.mp3",
+      C3: "C3.mp3", "D#3": "Ds3.mp3", "F#3": "Fs3.mp3", A3: "A3.mp3",
+      C4: "C4.mp3", "D#4": "Ds4.mp3", "F#4": "Fs4.mp3", A4: "A4.mp3",
+      C5: "C5.mp3", "D#5": "Ds5.mp3", "F#5": "Fs5.mp3", A5: "A5.mp3",
+      C6: "C6.mp3", "D#6": "Ds6.mp3", "F#6": "Fs6.mp3", A6: "A6.mp3",
+      C7: "C7.mp3", "D#7": "Ds7.mp3", "F#7": "Fs7.mp3", A7: "A7.mp3",
+      C8: "C8.mp3",
+    },
+    baseUrl: "https://tonejs.github.io/audio/salamander/",
+    release: 1,
+  }).toDestination();
+  await Tone.loaded();
+  samplerReady = true;
+}
+
+function playKey(midi) {
+  if (!samplerReady) {
+    initAudio().then(() => {
+      sampler.triggerAttackRelease(Tone.Frequency(midi, "midi").toNote(), 0.8);
+    });
+    return;
+  }
+  sampler.triggerAttackRelease(Tone.Frequency(midi, "midi").toNote(), 0.8);
+}
+
+// ---------- MIDI → notes with hand classification ----------
+function classifyHands(midi) {
+  const result = [];
+  const nonEmpty = midi.tracks.filter(t => t.notes.length > 0);
+
+  if (nonEmpty.length >= 2) {
+    const sorted = nonEmpty
+      .map(t => ({ t, avg: t.notes.reduce((s, n) => s + n.midi, 0) / t.notes.length }))
+      .sort((a, b) => a.avg - b.avg);
+    const threshold = sorted[Math.floor(sorted.length / 2)].avg;
+    for (const { t, avg } of sorted) {
+      const hand = avg < threshold ? "left" : "right";
+      for (const n of t.notes) {
+        result.push({ midi: n.midi, time: n.time, duration: n.duration, velocity: n.velocity, hand });
+      }
+    }
+  } else {
+    for (const t of nonEmpty) {
+      for (const n of t.notes) {
+        result.push({
+          midi: n.midi, time: n.time, duration: n.duration, velocity: n.velocity,
+          hand: n.midi >= 60 ? "right" : "left"
+        });
+      }
+    }
+  }
+  result.sort((a, b) => a.time - b.time);
+  return result;
+}
+
+// ---------- MusicXML loading ----------
+async function readMusicXML(file) {
+  const name = file.name.toLowerCase();
+  if (name.endsWith(".mxl")) {
+    if (typeof JSZip === "undefined") throw new Error("JSZip not loaded");
+    const buf = await file.arrayBuffer();
+    const zip = await JSZip.loadAsync(buf);
+    const containerFile = zip.file("META-INF/container.xml");
+    let mainPath = null;
+    if (containerFile) {
+      const containerXml = await containerFile.async("string");
+      const m = containerXml.match(/full-path="([^"]+)"/);
+      if (m) mainPath = m[1];
+    }
+    if (!mainPath) {
+      const xmlFiles = Object.keys(zip.files).filter(n => /\.(xml|musicxml)$/i.test(n) && !n.startsWith("META-INF"));
+      if (xmlFiles.length === 0) throw new Error("No MusicXML found inside .mxl");
+      mainPath = xmlFiles[0];
+    }
+    return await zip.file(mainPath).async("string");
+  }
+  return await file.text();
+}
+
+async function loadXML(xmlString, label) {
+  if (!toolkit) {
+    setStatus("Waiting for music engine…");
+    toolkit = await window.verovioReady;
+  }
+
+  toolkit.setOptions({
+    pageWidth: Math.max(2100, Math.floor(sheetEl.clientWidth * 8)),
+    pageHeight: 60000,
+    adjustPageHeight: true,
+    scale: 38,
+    breaks: "auto",
+    spacingSystem: 12,
+    footer: "none",
+    header: "none",
+  });
+
+  const loadResult = toolkit.loadData(xmlString);
+  if (!loadResult) throw new Error("Could not parse MusicXML file");
+
+  const pageCount = toolkit.getPageCount();
+  let svgHtml = "";
+  for (let i = 1; i <= pageCount; i++) {
+    svgHtml += toolkit.renderToSVG(i);
+  }
+  sheetEl.innerHTML = svgHtml;
+
+  await initAudio();
+
+  const midiBase64 = toolkit.renderToMIDI();
+  const binStr = atob(midiBase64);
+  const bytes = new Uint8Array(binStr.length);
+  for (let i = 0; i < binStr.length; i++) bytes[i] = binStr.charCodeAt(i);
+  const midi = new Midi(bytes.buffer);
+
+  notes = classifyHands(midi);
+  duration = midi.duration;
+
+  const tm = toolkit.renderToTimemap({ includeMeasures: true, includeRests: false });
+  timemap = Array.isArray(tm) ? tm : JSON.parse(tm);
+  tmIdx = 0;
+  activeSheetIds.clear();
+  lastScrolledId = null;
+
+  stopPlayback();
+  if (part) { part.dispose(); part = null; }
+  part = new Tone.Part((time, note) => {
+    if (handFilter !== "both" && note.hand !== handFilter) return;
+    sampler.triggerAttackRelease(
+      Tone.Frequency(note.midi, "midi").toNote(),
+      note.duration, time, note.velocity
+    );
+  }, notes.map(n => [n.time, n]));
+  part.start(0);
+
+  Tone.Transport.bpm.value = 120 * speed;
+
+  playBtn.disabled = false;
+  restartBtn.disabled = false;
+  setStatus(`${label} · ${notes.length} notes · ${duration.toFixed(1)}s`);
+}
+
+async function loadFile(file) {
+  try {
+    setStatus("Parsing sheet music…");
+    const xml = await readMusicXML(file);
+    await loadXML(xml, file.name);
+  } catch (err) {
+    setStatus("Error: " + err.message);
+    console.error(err);
+  }
+}
+
+// ---------- Twinkle Twinkle example as MusicXML ----------
+function buildExampleXML() {
+  const DIV = 2;
+  const DUR = { whole: 8, half: 4, quarter: 2, eighth: 1 };
+  const noteTag = (pitch, type, voice, staff) => {
+    const step = pitch[0];
+    const oct  = pitch.slice(1);
+    return `<note><pitch><step>${step}</step><octave>${oct}</octave></pitch><duration>${DUR[type]}</duration><voice>${voice}</voice><type>${type}</type><staff>${staff}</staff></note>`;
+  };
+  // [right-hand notes (voice 1), left-hand notes (voice 2)] per measure
+  const measures = [
+    [[["C4","quarter"],["C4","quarter"],["G4","quarter"],["G4","quarter"]], [["C3","whole"]]],
+    [[["A4","quarter"],["A4","quarter"],["G4","half"]],                       [["F3","whole"]]],
+    [[["F4","quarter"],["F4","quarter"],["E4","quarter"],["E4","quarter"]], [["F3","whole"]]],
+    [[["D4","quarter"],["D4","quarter"],["C4","half"]],                       [["C3","whole"]]],
+    [[["G4","quarter"],["G4","quarter"],["F4","quarter"],["F4","quarter"]], [["C3","whole"]]],
+    [[["E4","quarter"],["E4","quarter"],["D4","half"]],                       [["G3","whole"]]],
+    [[["G4","quarter"],["G4","quarter"],["F4","quarter"],["F4","quarter"]], [["C3","whole"]]],
+    [[["E4","quarter"],["E4","quarter"],["D4","half"]],                       [["G3","whole"]]],
+    [[["C4","quarter"],["C4","quarter"],["G4","quarter"],["G4","quarter"]], [["C3","whole"]]],
+    [[["A4","quarter"],["A4","quarter"],["G4","half"]],                       [["F3","whole"]]],
+    [[["F4","quarter"],["F4","quarter"],["E4","quarter"],["E4","quarter"]], [["F3","whole"]]],
+    [[["D4","quarter"],["D4","quarter"],["C4","half"]],                       [["C3","whole"]]],
+  ];
+
+  let body = "";
+  measures.forEach(([right, left], i) => {
+    let m = `<measure number="${i+1}">`;
+    if (i === 0) {
+      m += `<attributes>
+        <divisions>${DIV}</divisions>
+        <key><fifths>0</fifths></key>
+        <time><beats>4</beats><beat-type>4</beat-type></time>
+        <staves>2</staves>
+        <clef number="1"><sign>G</sign><line>2</line></clef>
+        <clef number="2"><sign>F</sign><line>4</line></clef>
+      </attributes>
+      <direction placement="above"><direction-type><metronome><beat-unit>quarter</beat-unit><per-minute>100</per-minute></metronome></direction-type><sound tempo="100"/></direction>`;
+    }
+    for (const [p, t] of right) m += noteTag(p, t, 1, 1);
+    m += `<backup><duration>8</duration></backup>`;
+    for (const [p, t] of left) m += noteTag(p, t, 2, 2);
+    m += `</measure>`;
+    body += m;
+  });
+
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE score-partwise PUBLIC "-//Recordare//DTD MusicXML 3.0 Partwise//EN" "http://www.musicxml.org/dtds/partwise.dtd">
+<score-partwise version="3.0">
+  <work><work-title>Twinkle Twinkle Little Star</work-title></work>
+  <part-list><score-part id="P1"><part-name>Piano</part-name></score-part></part-list>
+  <part id="P1">${body}</part>
+</score-partwise>`;
+}
+
+// ---------- Playback ----------
+function startPlayback() {
+  if (!notes.length) return;
+  if (Tone.Transport.seconds >= duration - 0.01) {
+    Tone.Transport.position = 0;
+    tmIdx = 0; activeSheetIds.clear();
+  }
+  Tone.Transport.start();
+  isPlaying = true;
+  playBtn.textContent = "⏸ Pause";
+}
+function pausePlayback() {
+  Tone.Transport.pause();
+  isPlaying = false;
+  playBtn.textContent = "▶ Play";
+}
+function stopPlayback() {
+  Tone.Transport.stop();
+  Tone.Transport.position = 0;
+  tmIdx = 0; activeSheetIds.clear();
+  updateSheetHighlights();
+  isPlaying = false;
+  playBtn.textContent = "▶ Play";
+}
+
+// ---------- Sheet highlighting ----------
+function advanceTimemap(t_ms) {
+  // Reset if time went backward
+  if (tmIdx > 0 && timemap[tmIdx - 1] && timemap[tmIdx - 1].tstamp > t_ms) {
+    tmIdx = 0; activeSheetIds.clear();
+  }
+  while (tmIdx < timemap.length && timemap[tmIdx].tstamp <= t_ms) {
+    const ev = timemap[tmIdx];
+    if (ev.off) for (const id of ev.off) activeSheetIds.delete(id);
+    if (ev.on)  for (const id of ev.on)  activeSheetIds.add(id);
+    tmIdx++;
+  }
+}
+
+function updateSheetHighlights() {
+  sheetEl.querySelectorAll(".playing").forEach(el => el.classList.remove("playing"));
+  for (const id of activeSheetIds) {
+    const el = document.getElementById(id);
+    if (el) el.classList.add("playing");
+  }
+  // Auto-scroll when focused note changes
+  const first = activeSheetIds.values().next().value;
+  if (first && first !== lastScrolledId) {
+    lastScrolledId = first;
+    const el = document.getElementById(first);
+    if (el) {
+      const elRect = el.getBoundingClientRect();
+      const cRect  = sheetEl.getBoundingClientRect();
+      const relativeTop = elRect.top - cRect.top + sheetEl.scrollTop;
+      const targetScroll = relativeTop - sheetEl.clientHeight / 2 + elRect.height / 2;
+      sheetEl.scrollTo({ top: targetScroll, behavior: "smooth" });
+    }
+  }
+}
+
+// ---------- Render loop ----------
+function draw() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  // Octave guide lines (C)
+  let wIdx = 0;
+  for (let midi = MIDI_MIN; midi <= MIDI_MAX; midi++) {
+    const pc = midi % 12;
+    if (!BLACK_PCS.has(pc)) {
+      if (pc === 0) {
+        ctx.fillStyle = "rgba(251,191,36,0.08)";
+        ctx.fillRect(wIdx * whiteW, 0, 1, CANVAS_H);
+      }
+      wIdx++;
+    }
+  }
+
+  const t = Tone.Transport.seconds;
+  const pps = CANVAS_H / LOOKAHEAD_S;
+  const activeByHand = {};
+
+  ctx.fillStyle = "rgba(255,255,255,0.1)";
+  ctx.fillRect(0, CANVAS_H - 2, canvas.width, 2);
+
+  for (const n of notes) {
+    if (handFilter !== "both" && n.hand !== handFilter) continue;
+    const noteEnd = n.time + n.duration;
+    if (noteEnd < t - 0.1) continue;
+    if (n.time > t + LOOKAHEAD_S) continue;
+
+    const key = keysByMidi[n.midi];
+    if (!key) continue;
+
+    const yBottom = CANVAS_H - (n.time - t) * pps;
+    const yTop = yBottom - n.duration * pps;
+    const h = Math.max(3, yBottom - yTop);
+    const x = key.x + 1;
+    const w = Math.max(2, key.width - 2);
+
+    if (n.hand === "left") { ctx.fillStyle = "#3b82f6"; ctx.strokeStyle = "#93c5fd"; }
+    else                    { ctx.fillStyle = "#ef4444"; ctx.strokeStyle = "#fca5a5"; }
+    ctx.lineWidth = 1;
+    ctx.fillRect(x, yTop, w, h);
+    ctx.strokeRect(x + 0.5, yTop + 0.5, w - 1, h - 1);
+
+    if (n.time <= t && t < noteEnd) activeByHand[n.midi] = n.hand;
+  }
+
+  for (const midi in keyElements) {
+    const el = keyElements[midi];
+    const hand = activeByHand[midi];
+    if (hand) {
+      el.classList.add("active-" + hand);
+      el.classList.remove(hand === "right" ? "active-left" : "active-right");
+    } else {
+      el.classList.remove("active-left", "active-right");
+    }
+  }
+
+  // Sheet highlighting
+  if (isPlaying || Tone.Transport.state === "paused") {
+    advanceTimemap(t * 1000);
+    updateSheetHighlights();
+  }
+
+  if (isPlaying && duration > 0 && t >= duration + 0.5) stopPlayback();
+
+  requestAnimationFrame(draw);
+}
+
+// ---------- UI wiring ----------
+document.getElementById("file-input").addEventListener("change", async (e) => {
+  const f = e.target.files[0];
+  if (f) await loadFile(f);
+});
+
+document.getElementById("example-btn").addEventListener("click", async () => {
+  try {
+    setStatus("Loading Twinkle Twinkle…");
+    await loadXML(buildExampleXML(), "Twinkle Twinkle Little Star");
+  } catch (err) {
+    setStatus("Error: " + err.message);
+    console.error(err);
+  }
+});
+
+playBtn.addEventListener("click", () => { isPlaying ? pausePlayback() : startPlayback(); });
+restartBtn.addEventListener("click", () => { stopPlayback(); startPlayback(); });
+
+document.getElementById("speed").addEventListener("input", (e) => {
+  const v = parseInt(e.target.value);
+  speed = v / 100;
+  Tone.Transport.bpm.value = 120 * speed;
+  document.getElementById("speed-val").textContent = v + "%";
+});
+
+document.getElementById("size").addEventListener("input", (e) => {
+  whiteW = parseInt(e.target.value);
+  document.getElementById("size-val").textContent = whiteW + "px";
+  buildKeys(whiteW);
+  renderKeyboard();
+});
+
+document.getElementById("hand").addEventListener("change", (e) => { handFilter = e.target.value; });
+document.getElementById("labels").addEventListener("change", (e) => { labelMode = e.target.value; renderKeyboard(); });
+
+document.body.addEventListener("dragover", (e) => { e.preventDefault(); });
+document.body.addEventListener("drop", async (e) => {
+  e.preventDefault();
+  const f = e.dataTransfer.files[0];
+  if (f && /\.(xml|musicxml|mxl)$/i.test(f.name)) await loadFile(f);
+});
+
+document.addEventListener("keydown", (e) => {
+  if (e.code === "Space" && !playBtn.disabled && e.target.tagName !== "INPUT" && e.target.tagName !== "SELECT") {
+    e.preventDefault();
+    isPlaying ? pausePlayback() : startPlayback();
+  }
+});
+
+// ---------- Init ----------
+buildKeys(whiteW);
+renderKeyboard();
+requestAnimationFrame(draw);
+
+// Warm up verovio in background
+window.verovioReady
+  .then((tk) => { toolkit = tk; setStatus("Ready. Load a MusicXML file or try the example."); })
+  .catch((err) => { setStatus("Music engine failed to load: " + err.message); });
+</script>
+</body>
+</html>
