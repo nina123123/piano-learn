@@ -175,13 +175,17 @@
   </header>
 
   <div class="tip">
-    <strong>📚 Add your own songs:</strong> search MuseScore for sheet music (try
-    <a href="https://musescore.com/sheetmusic?text=yoru%20ni%20kakeru" target="_blank">Yoru ni Kakeru</a>,
-    <a href="https://musescore.com/sheetmusic?text=idol%20yoasobi" target="_blank">Idol (Yoasobi)</a>,
+    <strong>📚 Add your own songs:</strong>
+    upload a <code>.musicxml</code> file, or
+    <strong>🔗 paste a URL</strong> (GitHub raw links work great — try
+    <a href="https://github.com/search?q=musicxml+yoasobi&type=code" target="_blank">GitHub code search</a>
+    for free transcriptions).
+    For MuseScore content (<a href="https://musescore.com/sheetmusic?text=yoru%20ni%20kakeru" target="_blank">Yoru ni Kakeru</a>,
+    <a href="https://musescore.com/sheetmusic?text=idol%20yoasobi" target="_blank">Idol</a>,
     <a href="https://musescore.com/sheetmusic?text=always%20with%20me%20spirited%20away" target="_blank">Always With Me</a>,
-    <a href="https://musescore.com/sheetmusic?text=bolbbalgan4" target="_blank">BOL4</a>,
-    <a href="https://imslp.org" target="_blank">IMSLP</a>),
-    download as <code>.musicxml</code>, upload below, then click <strong>⭐ Save</strong> to keep it in your library (stored privately in your browser).
+    <a href="https://musescore.com/sheetmusic?text=bolbbalgan4" target="_blank">BOL4</a>)
+    — download first (MuseScore gates the file), then upload.
+    Click <strong>⭐ Save</strong> to keep any song in your library (stored privately in your browser).
   </div>
 
   <div class="controls">
@@ -194,6 +198,8 @@
             <option value="builtin:twinkle">Twinkle Twinkle Little Star</option>
             <option value="builtin:happy-birthday">Happy Birthday to You</option>
             <option value="builtin:ode-to-joy">Ode to Joy (Beethoven)</option>
+            <option value="builtin:canon-in-d">Canon in D (Pachelbel)</option>
+            <option value="builtin:fur-elise">Für Elise (Beethoven)</option>
           </optgroup>
           <optgroup label="My saved songs" id="saved-optgroup"></optgroup>
         </select>
@@ -202,8 +208,9 @@
     </div>
     <div class="control">
       <label>Upload new file</label>
-      <div style="display:flex; gap:4px;">
+      <div style="display:flex; gap:4px; flex-wrap:wrap;">
         <input type="file" accept=".xml,.musicxml,.mxl" id="file-input">
+        <button id="url-btn" class="ghost" title="Load MusicXML from a URL">🔗 URL</button>
         <button id="save-btn" class="ghost" disabled title="Save current song to your library">⭐ Save</button>
       </div>
     </div>
@@ -722,10 +729,120 @@ function buildOdeToJoyXML() {
 </score-partwise>`;
 }
 
+function buildCanonXML() {
+  // Pachelbel's Canon in D, simplified opening. D major (2 sharps: F#, C#).
+  // Key signature makes F and C auto-sharp, so no explicit alter needed on those steps.
+  const n = (pitch, type, dur, voice, staff) => {
+    const step = pitch[0];
+    const octave = pitch[pitch.length - 1];
+    return `<note><pitch><step>${step}</step><octave>${octave}</octave></pitch><duration>${dur}</duration><voice>${voice}</voice><type>${type}</type><staff>${staff}</staff></note>`;
+  };
+  const q = (p, v, s) => n(p, "quarter", 2, v, s);
+  const h = (p, v, s) => n(p, "half", 4, v, s);
+
+  // RH: classic first variation melody (F and C are F# and C# in D major)
+  const rh = [
+    ["F4","E4","D4","C4"],
+    ["B3","A3","B3","C4"],
+    ["D4","C4","B3","A3"],
+    ["G3","F3","G3","A3"],
+    ["F4","E4","D4","C4"],
+    ["B3","A3","B3","C4"],
+    ["D4","C4","B3","A3"],
+    ["G3","F3","G3","A3"],
+  ];
+  // LH: ground bass (half notes)
+  const lh = [
+    ["D3","A3"],["B2","F3"],["G2","D3"],["G2","A3"],
+    ["D3","A3"],["B2","F3"],["G2","D3"],["G2","A3"],
+  ];
+
+  let body = "";
+  for (let i = 0; i < rh.length; i++) {
+    let m = `<measure number="${i+1}">`;
+    if (i === 0) {
+      m += `<attributes>
+        <divisions>2</divisions>
+        <key><fifths>2</fifths></key>
+        <time><beats>4</beats><beat-type>4</beat-type></time>
+        <staves>2</staves>
+        <clef number="1"><sign>G</sign><line>2</line></clef>
+        <clef number="2"><sign>F</sign><line>4</line></clef>
+      </attributes>
+      <direction placement="above"><direction-type><metronome><beat-unit>quarter</beat-unit><per-minute>80</per-minute></metronome></direction-type><sound tempo="80"/></direction>`;
+    }
+    for (const p of rh[i]) m += q(p, 1, 1);
+    m += `<backup><duration>8</duration></backup>`;
+    for (const p of lh[i]) m += h(p, 2, 2);
+    m += `</measure>`;
+    body += m;
+  }
+
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE score-partwise PUBLIC "-//Recordare//DTD MusicXML 3.0 Partwise//EN" "http://www.musicxml.org/dtds/partwise.dtd">
+<score-partwise version="3.0">
+  <work><work-title>Canon in D</work-title><work-number>Pachelbel</work-number></work>
+  <part-list><score-part id="P1"><part-name>Piano</part-name></score-part></part-list>
+  <part id="P1">${body}</part>
+</score-partwise>`;
+}
+
+function buildFurEliseXML() {
+  // Beethoven's Für Elise, opening melody (A minor, 3/8). Single-voice simplification.
+  const n = (pitch, type, dur) => {
+    const step = pitch[0];
+    const alter = pitch.includes("#") ? 1 : 0;
+    const octave = pitch[pitch.length - 1];
+    const acc = alter === 1 ? "<accidental>sharp</accidental>" : "";
+    return `<note><pitch><step>${step}</step>${alter ? `<alter>${alter}</alter>` : ""}<octave>${octave}</octave></pitch><duration>${dur}</duration><type>${type}</type>${acc}</note>`;
+  };
+  const e = (p) => n(p, "eighth", 1);
+
+  const attrs = `<attributes>
+    <divisions>2</divisions>
+    <key><fifths>0</fifths></key>
+    <time><beats>3</beats><beat-type>8</beat-type></time>
+    <clef><sign>G</sign><line>2</line></clef>
+  </attributes>
+  <direction placement="above"><direction-type><metronome><beat-unit>eighth</beat-unit><per-minute>130</per-minute></metronome></direction-type><sound tempo="130"/></direction>`;
+
+  // Single-voice simplification of the iconic opening phrase
+  const phrases = [
+    ["E5","D#5","E5"],
+    ["D#5","E5","B4"],
+    ["D5","C5","A4"],
+    ["C4","E4","A4"],
+    ["B4","E4","G#4"],
+    ["B4","C5","E5"],
+    ["E5","D#5","E5"],
+    ["D#5","E5","B4"],
+    ["D5","C5","A4"],
+    ["A4","A4","A4"],
+  ];
+
+  let body = "";
+  phrases.forEach((p, i) => {
+    body += `<measure number="${i+1}">`;
+    if (i === 0) body += attrs;
+    for (const note of p) body += e(note);
+    body += `</measure>`;
+  });
+
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE score-partwise PUBLIC "-//Recordare//DTD MusicXML 3.0 Partwise//EN" "http://www.musicxml.org/dtds/partwise.dtd">
+<score-partwise version="3.0">
+  <work><work-title>Für Elise</work-title><work-number>Beethoven</work-number></work>
+  <part-list><score-part id="P1"><part-name>Piano</part-name></score-part></part-list>
+  <part id="P1">${body}</part>
+</score-partwise>`;
+}
+
 const BUILTIN_SONGS = {
   "twinkle":        { name: "Twinkle Twinkle Little Star", build: buildTwinkleXML },
   "happy-birthday": { name: "Happy Birthday to You",       build: buildHappyBirthdayXML },
   "ode-to-joy":     { name: "Ode to Joy (Beethoven)",      build: buildOdeToJoyXML },
+  "canon-in-d":     { name: "Canon in D (Pachelbel)",      build: buildCanonXML },
+  "fur-elise":      { name: "Für Elise (Beethoven)",       build: buildFurEliseXML },
 };
 
 // ---------- Saved song library (localStorage) ----------
@@ -904,6 +1021,47 @@ function draw() {
 document.getElementById("file-input").addEventListener("change", async (e) => {
   const f = e.target.files[0];
   if (f) await loadFile(f);
+});
+
+document.getElementById("url-btn").addEventListener("click", async () => {
+  const url = prompt(
+    "Paste the URL of a MusicXML file.\n\n" +
+    "✅ Works with:\n" +
+    "• GitHub raw URLs (raw.githubusercontent.com/…)\n" +
+    "• Any site that allows cross-origin requests (CORS)\n\n" +
+    "❌ MuseScore URLs will not work — their files are gated.\n" +
+    "For those, download first and use the file upload."
+  );
+  if (!url || !url.trim()) return;
+  const clean = url.trim();
+  try {
+    setStatus("Fetching " + clean + "…");
+    const res = await fetch(clean);
+    if (!res.ok) throw new Error(`HTTP ${res.status} ${res.statusText}`);
+    let xml;
+    if (/\.mxl(\?|#|$)/i.test(clean)) {
+      const blob = await res.blob();
+      const fakeFile = new File([blob], "remote.mxl");
+      xml = await readMusicXML(fakeFile);
+    } else {
+      xml = await res.text();
+    }
+    const guessName = (clean.split("/").pop() || "from-url")
+      .split("?")[0].split("#")[0]
+      .replace(/\.(xml|musicxml|mxl)$/i, "") || "from-url";
+    await loadXML(xml, guessName);
+    currentSongSource = { type: "file", name: guessName, xml };
+    document.getElementById("library-select").value = "";
+    updateSaveDeleteButtons();
+  } catch (err) {
+    const isCors = err.message.includes("Failed to fetch") || err.name === "TypeError";
+    if (isCors) {
+      setStatus("Couldn't fetch — the site may block cross-origin requests (CORS). Try a GitHub raw URL instead.");
+    } else {
+      setStatus("Error: " + err.message);
+    }
+    console.error(err);
+  }
 });
 
 document.getElementById("library-select").addEventListener("change", async (e) => {
